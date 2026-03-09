@@ -1,0 +1,11 @@
+aope_env
+data/
+FeatUp/
+.vscode
+aope_venv
+data/*
+debug_output
+**/__pycache__/**
+**/__pycache__
+**/*.cpython-312.pyc
+*.cpython-312.pyc
