@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 # Homogeneous transformation matrix
 class T:
@@ -85,3 +86,57 @@ class T:
         t.mat[:3, 3] = translation_vec
 
         return t
+    
+def homogenous_transform(t_mat : torch.Tensor, pcl : torch.Tensor):
+    is_batched = len(pcl.shape) == 3
+    if is_batched:
+        # Input is batched
+        ones_shape = (pcl.shape[0], pcl.shape[1], 1)
+    else:
+        ones_shape = (pcl.shape[0], 1)
+
+
+    transformed_pcl = (t_mat @ torch.cat((pcl, torch.ones(ones_shape).to(pcl.device)), dim=-1).transpose(-1, -2)).transpose(-1, -2)
+
+    if is_batched:
+        return transformed_pcl[:, :, :-1]
+    else:
+        return transformed_pcl[:, :-1]
+    
+def axis_angle_to_rotation_matrix(a: torch.Tensor, theta: torch.Tensor) -> torch.Tensor:
+    """
+    Rodrigues' formula, batched.
+
+    Args:
+        a:     (..., 3) rotation axes (need not be pre-normalized)
+        theta: (...)    rotation angles in radians
+
+    Returns:
+        R: (..., 3, 3) rotation matrices
+    """
+    # Normalize the axis
+    a = a / a.norm(dim=-1, keepdim=True).clamp(min=1e-8)
+    ax, ay, az = a.unbind(-1)
+    zeros = torch.zeros_like(ax)
+
+    # Skew-symmetric matrix K such that K @ v == a x v
+    K = torch.stack([
+        torch.stack([zeros, -az,  ay], dim=-1),
+        torch.stack([az,  zeros, -ax], dim=-1),
+        torch.stack([-ay,  ax, zeros], dim=-1),
+    ], dim=-2)
+
+    I = torch.eye(3, dtype=a.dtype, device=a.device).expand(*a.shape[:-1], 3, 3)
+
+    sin_t = torch.sin(theta)[..., None, None]
+    cos_t = torch.cos(theta)[..., None, None]
+
+    R = I + sin_t * K + (1 - cos_t) * (K @ K)
+    return R
+
+def pivot_transform(pivot : torch.Tensor, rot_axis: torch.Tensor, angle:torch.Tensor, pcl):
+
+    R = axis_angle_to_rotation_matrix(rot_axis.squeeze(1), angle.squeeze(1).squeeze(1))
+
+    print("Rotation mat shape {}".format(R.shape))
+    return (R @ (pcl - pivot).transpose(-1, -2)).transpose(-1, -2) + pivot

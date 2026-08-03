@@ -9,3 +9,6 @@ debug_output
 **/__pycache__
 **/*.cpython-312.pyc
 *.cpython-312.pyc
+aope/runs/*
+aope/testing/test_data
+pytorch3d

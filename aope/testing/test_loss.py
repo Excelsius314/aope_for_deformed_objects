@@ -15,6 +15,8 @@ sys.path.append(ROOT)
 from modules.reconstruction.reconstruction import *
 from modules.loss.losses import *
 
+from modules.reconstruction.reconstruction import apply_padding
+
 
 def init_base_params(
     rot_angles_val,
@@ -137,7 +139,8 @@ def init_combined_params(
     test_pcl: o3d.geometry.PointCloud,
 ):
 
-    obj_pcl = Tensor(test_pcl.points)[::8].cuda()
+    size = len(test_pcl.points)
+    obj_pcl = Tensor(test_pcl.farthest_point_down_sample(size // 8).points).cuda()
 
     obj_pcl = obj_pcl - obj_pcl.mean(dim=0, keepdim=True)
 
@@ -249,7 +252,6 @@ def part_test():
         rotation_axis=rotation_axis,
         pcl=canonical_pcl.transpose(-2, -1),
     ).transpose(-1, -2)
-    print(predicted_pcl.shape)
 
     predicted_pcl = apply_part_global_pose(
         t=global_t, scale=global_s, R=global_R, pcl=predicted_pcl.transpose(-1, -2)
@@ -293,6 +295,11 @@ def base_test():
         global_t.transpose(-2, -1), global_s, global_R, observed_pcl.transpose(-2, -1)
     ).transpose(-2, -1)
 
+    ############# Appply padding strategies #############
+    strategy = "random"
+    padding_size = 200
+    # Random
+
     deformation_fields = (canonical_pcl - observed_pcl).requires_grad_(True)
 
     print("Deformation fields shape: ", deformation_fields.shape)
@@ -333,7 +340,7 @@ def base_test():
     loss.backward()
 
 
-def combined_test():
+def combined_test(noise_levels, padding_strategy=None, padding_size=200):
 
     batch_size = 2
     part_size = 2
@@ -388,46 +395,160 @@ def combined_test():
         dim=-2,
     )
 
-    noise_levels = torch.linspace(0, 10, steps=20)  # adjust max noise if desired
-
+    losses = []
+    print(noise_levels)
     for noise_scale in noise_levels:
 
         freq = 1.0  # controls smoothness
         structured_noise_base = torch.zeros_like(base_pcl)
         structured_noise_part = torch.zeros_like(part_pcls)
 
-        structured_noise_base[:, :, 0] = noise_scale * torch.sin(freq * base_pcl[:, :, 0])
-        structured_noise_base[:, :, 1] = noise_scale * torch.sin(freq * base_pcl[:, :, 1])
-        structured_noise_base[:, :, 2] = noise_scale * torch.sin(freq * base_pcl[:, :, 2])
+        structured_noise_base[:, :, 0] = noise_scale * torch.sin(
+            freq * base_pcl[:, :, 0]
+        )
+        structured_noise_base[:, :, 1] = noise_scale * torch.sin(
+            freq * base_pcl[:, :, 1]
+        )
+        structured_noise_base[:, :, 2] = noise_scale * torch.sin(
+            freq * base_pcl[:, :, 2]
+        )
 
-        deformation_field_base = (base_pcl - observed_base_pcl).requires_grad_(True) + structured_noise_base
-        deformation_fields_parts = (part_pcls - observed_part_pcls).requires_grad_(True)
+        deformation_field_base = (base_pcl - observed_base_pcl).requires_grad_(
+            True
+        ) + structured_noise_base
+        deformation_fields_parts = (part_pcls - observed_part_pcls).requires_grad_(True) + structured_noise_base.unsqueeze(1)
+
+        print("Prior to padding: {}".format(deformation_field_base.shape))
+        deformation_field_base, padded_observed_base_pcl = apply_padding(
+            deformation_field_base,
+            observed_base_pcl,
+            base_pcl,
+            False,
+            padding_size,
+            padding_strategy,
+        )
+        deformation_fields_parts, padded_observed_part_pcls = apply_padding(
+            deformation_fields_parts,
+            observed_part_pcls,
+            part_pcls,
+            True,
+            padding_size,
+            padding_strategy,
+        )
+
+        print("After padding: {}".format(deformation_fields_parts.shape))
+        print("pivots: {}".format(pivot_points.shape))
+        print("rot {}".format(rotation_axis.shape))
+        print("Base padding {}".format(deformation_field_base.shape))
+
+        print("part n: {}".format(deformation_fields_parts.shape[1]))
+
+        part_assingment = torch.zeros(
+            (deformation_field_base.shape[0], deformation_field_base.shape[1]),
+            dtype=int,
+        )
+        part_assingment[:, part_assingment.shape[1] // 2 :] = 1
 
         ############### Prediction ###############
 
-        predicted_pcl, base_rot_residuum, canonical_base_center,  part_rot_residuum, part_non_axis_rot,  = reconstruct_pose_params(
-            deformation_field_base,
-            observed_base_pcl,
-            deformation_fields_parts,
-            observed_part_pcls,
+        (
+            predicted_pcl,
+            base_rot_residuum,
+            canonical_base_center,
+            scale_pred,
+            part_rot_residuum,
+            part_non_axis_rot,
+            can_base,
+            can_parts,
+            R_pred,
+            scale_pred,
+            t_pred,
+            thetas,
             pivot_points,
             rotation_axis,
+            predicted_base_pcl,
+        ) = reconstruct_pose_params(
+            deformation_field_base + padded_observed_base_pcl,
+            padded_observed_base_pcl,
+            deformation_fields_parts + padded_observed_part_pcls,
+            padded_observed_part_pcls,
+            pivot_points,
+            rotation_axis,
+            #padding_size=padding_size,
+            padding_size=0,
+            part_assingment=part_assingment,
         )
+
+        print("Predicted shape: {}".format(predicted_pcl.shape))
 
         ########################### Loss ##################
 
-     
+        # loss = pipeline_loss(
+        #    predicted_pcl,
+        #    base_rot_residuum + part_rot_residuum,
+        #    part_non_axis_rot,
+        #    target_pcl,
+        #    canonical_base_center,
+        # )
 
-        loss = pipeline_loss(
-            predicted_pcl,
-            base_rot_residuum + part_rot_residuum,
-            part_non_axis_rot,
-            target_pcl,
-            canonical_base_center,
-        )
+        # loss.backward()
+        losses.append((base_rot_residuum + part_rot_residuum).mean().item())
+        print("append")
 
-        loss.backward()
+    print("return loss")
+    return losses
+
+
+def plot_losses(losses, noise_levels, padding_size, strategies):
+
+    plt.figure()
+    plt.title("Loss for Padding Size {}".format(int(padding_size)))
+
+    for losses_per_noise_level, strategy in zip(losses, strategies):
+        y = [float(loss) for loss in losses_per_noise_level]
+
+        line_type = "-"
+
+        if strategy == "Random-Sample":
+            line_type = "."
+        
+        if strategy == "Farthest-Point-Sampling":
+            line_type = "--"
+
+        plt.plot(noise_levels, y, line_type, label=strategy  )
+
+    plt.legend()
+    plt.xlabel("Noise Level")
+    plt.ylabel("Combined Kabsch-Umeyama Loss")
+
+    plt.savefig('loss_padding_{}.png'.format(padding_size), dpi=1200)
 
 
 if __name__ == "__main__":
-    combined_test()
+
+    noise_levels = torch.linspace(0, 20, steps=20)  # adjust max noise if desired
+    strategys = [
+        "Random-Sample",
+        "Zero-Padding",
+        "Farthest-Point-Sampling",
+        "No-Padding",
+    ]  # ["Random-Sample", "Zero-Padding", "Farthest-Point-Sampling"]
+
+    for padding_size in torch.linspace(0, 2000, steps=3):
+        losses = []
+        for strategy in strategys:
+            if strategy == "No-Padding":
+                padding_size_int = 0
+            else:
+                padding_size_int = int(padding_size)
+            losses.append(
+                combined_test(
+                    noise_levels,
+                    padding_strategy=strategy,
+                    padding_size=padding_size_int,
+                )
+            )
+
+        plot_losses(losses, noise_levels, padding_size, strategys)
+
+    #plt.show()

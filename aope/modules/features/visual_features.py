@@ -17,7 +17,7 @@ from einops import rearrange
 import torchvision.transforms as T
 
 
-class FeaturePreprocessor:
+class VisualFeaturePreprocessor:
 
     def __init__(self, conf: VisualFeatureConfig):
         self.config = conf
@@ -107,7 +107,6 @@ class HFModel:
         h = int(np.ceil(h / patch_size) * patch_size)
         w = int(np.ceil(w / patch_size) * patch_size)
 
-        print("Matching resolution: {}x{}".format(int(h), (w)))
         return h, w
 
 
@@ -125,9 +124,11 @@ class Radio(HFModel):
     def infer(self, imgs, return_local=True, return_global=True):
         summaries = []
         features = []
-        for batch in HFModel.batch(imgs, self.batch_size):
+        for i in range(0, len(imgs), self.batch_size):
+            batch = imgs[i:min(i+self.batch_size, len(imgs))]
+
             pixel_values = self.image_processor(
-                images=batch, return_tensors="pt", do_resize=True
+                images=batch, return_tensors="pt", do_resize=False
             ).pixel_values
             pixel_values = pixel_values.cuda()
 

@@ -1,7 +1,6 @@
 import open3d as o3d
 import matplotlib.pyplot as plt
 
-import torch.linalg
 from torch import Tensor
 import numpy as np
 

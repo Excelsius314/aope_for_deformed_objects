@@ -11,8 +11,9 @@ class DatasetFormat(Enum):
 class LabelConfig:
     cam_pose_label = "cam_poses"
     cam_intrinsics_label = "cam_intrinsics"
-    obj_data_label = "object_poses"
-    obj_pose_label = "pose"
+    obj_6D_poses_label = "object_6D_poses"
+    obj_geometric_pose_label = "geometric_pose"
+
     obj_joint_state_label = "joint_states"
     obj_joint_state_degrees = True  # if false, radians are assumed
 
@@ -25,8 +26,13 @@ class DatasetConfig:
     img_dir_name = "images"
 
     label_config = LabelConfig
-    label_file_name = "scene_data.json"
+    label_file_name = "scene_data.zarr"
 
+    pcl_size = 3500
     imgsz = 512
+
+    num_parts = 2
+
+
 
 

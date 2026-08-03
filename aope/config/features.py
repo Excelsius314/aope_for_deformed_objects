@@ -16,9 +16,10 @@ class VisBackboneConfig:
 
 @dataclass
 class RadioConfig(VisBackboneConfig):
-    model_version: str = "nvidia/RADIO"
-    patch_size: int = 14
+    model_version: str = "nvidia/E-RADIO"
+    patch_size: int = 32
     backbone_type: VisBackBoneModels = VisBackBoneModels.RADIO
+    embedding_dim = 1536
 
 @dataclass
 class DINOConfig(VisBackboneConfig):
@@ -45,6 +46,7 @@ class PCLBackboneConfig:
 class RANDLAConfig(PCLBackboneConfig):
     decimation : int = 4
     num_neighbors : int = 16
+    feature_dim : int = 128
 
 @dataclass
 class PCLFeatureConfig:

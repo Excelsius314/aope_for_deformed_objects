@@ -1,7 +1,6 @@
-from modules.features.visual_features import FeaturePreprocessor
+from modules.features.visual_features import VisualFeaturePreprocessor
 from modules.features.visual_features import HFModel
 
-from config.features import VisualFeatureConfig
 from config.features import *
 import cv2
 import os
@@ -22,7 +21,7 @@ if __name__ == "__main__":
     v_feat_conf.backbone_config.backbone_type = VisBackBoneModels.DINO_FEATUP
     v_feat_conf.backbone_config.model_version = "mhamilton723/FeatUp"
 
-    preprocessor = FeaturePreprocessor(v_feat_conf)
+    preprocessor = VisualFeaturePreprocessor(v_feat_conf)
 
     imgs = [
         cv2.imread(os.path.join(im_dir, img_file))

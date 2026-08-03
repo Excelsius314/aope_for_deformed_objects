@@ -15,7 +15,11 @@ class PreprocessingConfig:
     preprocess_visual_features = True
     segmentation_config = SegmentationConfig()
 
-    create_debug_imgs = True
+    batch_size = 10
+
+    max_samples = 20000
+
+    create_debug_imgs = False
     debug_path = "debug/"
 
     save_back_to_disk = True
